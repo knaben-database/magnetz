@@ -8,7 +8,8 @@
   rustc,
   rustPlatform,
   openssl,
-  pkg-config
+  pkg-config,
+  libiconv
 }:
 mkShell {
   strictDeps = true;
@@ -20,13 +21,17 @@ mkShell {
     rust-analyzer-unwrapped
     rustfmt
     clippy
+    openssl
+    pkg-config
   ];
+
+  buildInputs = [];
+
+  shellHook = ''
+    export PKG_CONFIG_PATH="${openssl.dev}/lib/pkgconfig";
+  '';
 
   env = {
     RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
   };
-
-  #shellHook = ''
-  #  export PKG_CONFIG_PATH="${openssl.dev}/lib/pkgconfig";
-  #'';
 }

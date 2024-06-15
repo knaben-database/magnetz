@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
   };
 
   outputs = {
@@ -18,23 +18,8 @@
 
     rev = self.shortRev or self.dirtyShortRev or "dirty";
   in {
-    overlays.default = final: prev: {
-      magnetz = final.callPackage ./package.nix {
-        inherit rev;
-      };
-    };
-
-    packages = forAllSystems (pkgs: rec {
-      magnetz = pkgs.callPackage ./package.nix {
-        inherit rev;
-      };
-      default = magnetz;
-    });
-
     devShells = forAllSystems (pkgs: {
       default = pkgs.callPackage ./devshell.nix {};
     });
-
-    nixosModules.default = import ./module.nix;
   };
 }

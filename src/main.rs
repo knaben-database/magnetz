@@ -34,6 +34,8 @@ impl Magnet {
             address_trackers,
         }
     }
+
+    fn get_info(&self) {}
 }
 
 fn main() {
@@ -43,5 +45,6 @@ fn main() {
         "magnet:?xt=urn:btih:70fc6581383f880642a6d95b16c2ceff08c67aa8&dn=%5b2023.01.23%5d%20Blue%20Archive%20Original%20Soundtrack%20Vol.3%20%ef%bd%9eReaching%20for%20the%20precious%20time%ef%bd%9e%20%5bFLAC%2048kHz%ef%bc%8f24bit%5d&tr=http%3a%2f%2fnyaa.tracker.wf%3a7777%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce"
     ];
     let magnet = Magnet::new(test_magnets[0]);
+    magnet.get_info();
     println!("Hello, world! {:?}", magnet);
 }

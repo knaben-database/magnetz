@@ -30,11 +30,11 @@ def analyze_magnet_link(file_paths_or_strings):
         # Get the parameters
         params = parse_qs(parsed_link.query)
         # Print the parameters
-        print(f'Parameters for magnet link: {line}')
+        print(f'Parameters for magnet link: {magnet}')
         for key, values in params.items():
-            if key == 'tr':
-                # Sort the "tr" parameters by their values
-                values = sorted(values)
+            #if key == 'tr':
+            #    # Sort the "tr" parameters by their values
+            #    values = sorted(values)
             for value in values:
                 print(f'  {key}: {value}')
 

@@ -1,0 +1,3 @@
+[submodule "torrust-tracker"]
+	path = torrust-tracker
+	url = git@github.com:torrust/torrust-tracker.git
