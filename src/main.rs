@@ -1,5 +1,19 @@
+use anyhow::Result;
+use serde_json::{json, Value};
+use elasticsearch::Elasticsearch;
 use std::collections::HashMap;
 use url::Url;
+use tokio;
+use redis::{self, Commands};
+
+struct Config {
+    elasticsearch_host: String,
+    elasticsearch_port: u16,
+    elasticsearch_index: String,
+    redis_host: String,
+    redis_port: u16,
+    redis_key: String,
+}
 
 #[derive(Debug)]
 struct Magnet {
@@ -38,13 +52,47 @@ impl Magnet {
     fn get_info(&self) {}
 }
 
-fn main() {
-    let test_magnets : Vec<&str> = vec![
-        "magnet:?xt=urn:btih:e536aa798701b027a098c8ebbca5943d3bda3a0c&dn=%5b2022.03.24%5d%20Blue%20Archive%20Original%20Soundtrack%20Vol.1%20%ef%bd%9eLonging%20for%20the%20memorable%20days%ef%bd%9e%20%5bFLAC%5d&tr=http%3a%2f%2fnyaa.tracker.wf%3a7777%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce",
-        "magnet:?xt=urn:btih:5502910db0473c553d0aac7332ee7fadbdc05085&dn=%5b2022.07.17%5d%20Blue%20Archive%20Original%20Soundtrack%20Vol.2%20%ef%bd%9eSearching%20for%20the%20unknown%20truth%ef%bd%9e%20%5bFLAC%2048kHz%ef%bc%8f24bit%5d&tr=http%3a%2f%2fnyaa.tracker.wf%3a7777%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce",
-        "magnet:?xt=urn:btih:70fc6581383f880642a6d95b16c2ceff08c67aa8&dn=%5b2023.01.23%5d%20Blue%20Archive%20Original%20Soundtrack%20Vol.3%20%ef%bd%9eReaching%20for%20the%20precious%20time%ef%bd%9e%20%5bFLAC%2048kHz%ef%bc%8f24bit%5d&tr=http%3a%2f%2fnyaa.tracker.wf%3a7777%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce"
-    ];
-    let magnet = Magnet::new(test_magnets[0]);
-    magnet.get_info();
-    println!("Hello, world! {:?}", magnet);
+enum TrackerType {
+    UDP,
+    HTTP,
+}
+
+struct Tracker {
+    address: String,
+    port: u16,
+    tracker_type: TrackerType,
+}
+impl Tracker {
+    fn new(link: &str) -> Tracker {
+        Tracker {
+            address: "wow".to_string(),
+            port: 123,
+            tracker_type: TrackerType::UDP,
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let redis_client = redis::Client::open("redis://127.0.0.1/")?;
+    let mut con = redis_client.get_connection()?;
+
+    let elasticsearch_client = Elasticsearch::default();
+    let something = elasticsearch_client.mget(elasticsearch::MgetParts::Index("torrent_cache2")).body(
+        json!({
+          "ids" : ["e82aee90213ca36e14be64c369642f824b2532cb", "05bc3934750437d87a6a148a92a1a59ab6ae8db2"]
+        })
+    ).send().await?;
+
+    println!("{}", something.text().await?);
+    return Ok(());
+
+    let heatmap: Vec<(String, u32)> = con.zrevrange_withscores("heatmap", 0, 99)?;
+    for score in heatmap.clone() {
+        let (id, score) = score;
+    }
+
+    println!("{:?}", heatmap);
+
+    Ok(())
 }
