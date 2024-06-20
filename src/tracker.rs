@@ -1,23 +1,23 @@
 use anyhow::{bail, Context, Result};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use url::Url;
 
 use super::Magnet;
 
-#[derive(PartialEq, Debug, Hash)]
+#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 enum TrackerSchema {
     UDP,
     HTTP,
     HTTPS,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
 pub struct Tracker {
     host: String,
     port: u16,
     schema: TrackerSchema,
-    magnets: HashSet<Magnet>,
 }
 impl Tracker {
     pub fn new(link: &str) -> Result<Tracker> {
@@ -36,26 +36,17 @@ impl Tracker {
             "udp" => TrackerSchema::UDP,
             s => bail!("Unsupported schema: {}", s),
         };
-        let magnets = HashSet::new();
 
-        Ok(Tracker {
-            host,
-            port,
-            schema,
-            magnets,
-        })
+        Ok(Tracker { host, port, schema })
     }
 }
-impl PartialEq for Tracker {
-    fn eq(&self, other: &Self) -> bool {
-        self.host == other.host && self.port == other.port && self.schema == other.schema
+impl fmt::Display for Tracker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let schema = match self.schema {
+            TrackerSchema::UDP => "udp",
+            TrackerSchema::HTTP => "http",
+            TrackerSchema::HTTPS => "https",
+        };
+        write!(f, "{}://{}:{}", schema, self.host, self.port)
     }
 }
-impl Hash for Tracker {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.host.hash(state);
-        self.port.hash(state);
-        self.schema.hash(state);
-    }
-}
-impl Eq for Tracker {}

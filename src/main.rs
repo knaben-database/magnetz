@@ -1,18 +1,17 @@
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use elasticsearch::{Elasticsearch, MgetParts};
-use redis::{self, Commands, Script};
+use redis::{self, Script};
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use tokio;
-use url::Url;
 
 use elasticsearch_mget::ElasticsearchMgetResponse;
-use tracker::Tracker;
 use magnet::Magnet;
+use tracker::Tracker;
 
 mod elasticsearch_mget;
-mod tracker;
 mod magnet;
+mod tracker;
 
 struct Config {
     elasticsearch_host: String,
@@ -24,7 +23,6 @@ struct Config {
 }
 
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let redis_client = redis::Client::open("redis://127.0.0.1/")?;
@@ -33,7 +31,7 @@ async fn main() -> Result<()> {
 
     // Lua script that gets 9 of the top heatmap values, deletes them and inserts a lock value with expiry of 7200 seconds
     let lock_expiry = 7200; // Lock expiry time in seconds
-    let top_n = 9; // Number of top IDs to retrieve
+    let top_n = 99; // Number of top IDs to retrieve
     let script = Script::new(&format!(
         r#"
         local result = redis.call('ZMPOP', 1, 'heatmap', 'MAX', 'COUNT', {top_n})
@@ -49,7 +47,6 @@ async fn main() -> Result<()> {
         return ids
     "#
     ));
-    let mut trackers: HashSet<Tracker> = HashSet::new();
 
     let heatmap: Vec<Vec<String>> = script.invoke(&mut con)?;
     let ids: Vec<String> = heatmap
@@ -73,14 +70,23 @@ async fn main() -> Result<()> {
         .filter_map(|(id, mu)| Magnet::new(mu).ok().map(|magnet| (id, magnet)))
         .collect();
 
-    for (id, magnet) in magnets {
-        for tracker in magnet.trackers {
-            // continue here
-            trackers.insert(tracker);
+    let mut trackers: HashMap<Tracker, HashMap<String, Magnet>> = HashMap::new();
+    for (id, magnet) in magnets.clone() {
+        for magnet_tracker in magnet.clone().get_trackers() {
+            let entry = trackers.entry(magnet_tracker).or_insert_with(HashMap::new);
+            entry.insert(id.clone(), magnet.clone());
         }
     }
 
-    println!("Trackers: {:?}", trackers);
+    for (tracker, magnets) in trackers {
+        println!("Tracker: {}", tracker);
+        for (id, magnet) in magnets {
+            let mut stuff = magnet.to_string();
+            stuff.truncate(200);
+            println!("  {}", stuff);
+        }
+    }
+
 
     Ok(())
 }
