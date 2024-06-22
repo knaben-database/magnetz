@@ -8,6 +8,7 @@ use super::tracker::Tracker;
 pub struct Magnet {
     link: Url,
     exact_topic: String,
+    pub info_hash: String,
     display_name: Option<String>,
     exact_length: Option<u64>,
 }
@@ -22,10 +23,16 @@ impl Magnet {
             .to_string();
         let display_name = params.get("dn").map(String::from);
         let exact_length = params.get("xl").and_then(|s| s.parse().ok());
+        let info_hash = exact_topic
+            .split(":")
+            .last()
+            .with_context(|| format!("No info hash found in exact topic: {}", exact_topic))?
+            .to_uppercase();
 
         Ok(Magnet {
             link: parsed_link,
             exact_topic,
+            info_hash,
             display_name,
             exact_length,
         })

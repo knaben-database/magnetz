@@ -2,16 +2,21 @@ use anyhow::Result;
 use elasticsearch::{Elasticsearch, MgetParts};
 use redis::{self, Script};
 use serde_json::json;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use tokio;
+use track_tracker::TrackTrackers;
 
 use elasticsearch_mget::ElasticsearchMgetResponse;
 use magnet::Magnet;
 use tracker::Tracker;
 
+use scraper::Scraper;
+
 mod elasticsearch_mget;
 mod magnet;
+mod track_tracker;
 mod tracker;
+mod scraper;
 
 struct Config {
     elasticsearch_host: String,
@@ -31,7 +36,7 @@ async fn main() -> Result<()> {
 
     // Lua script that gets 9 of the top heatmap values, deletes them and inserts a lock value with expiry of 7200 seconds
     let lock_expiry = 7200; // Lock expiry time in seconds
-    let top_n = 99; // Number of top IDs to retrieve
+    let top_n = 49; // Number of top IDs to retrieve
     let script = Script::new(&format!(
         r#"
         local result = redis.call('ZMPOP', 1, 'heatmap', 'MAX', 'COUNT', {top_n})
@@ -70,6 +75,20 @@ async fn main() -> Result<()> {
         .filter_map(|(id, mu)| Magnet::new(mu).ok().map(|magnet| (id, magnet)))
         .collect();
 
+    let mut track_trackers: HashMap<Tracker, TrackTrackers> = HashMap::new();
+    for (id, magnet) in magnets.clone() {
+        for magnet_tracker in magnet.clone().get_trackers() {
+            let entry = track_trackers.entry(magnet_tracker.clone()).or_insert_with(|| TrackTrackers::new(magnet_tracker));
+            entry.insert_magnet((id.clone(), magnet.clone()));
+        }
+    }
+
+    for track_tracker in track_trackers.values_mut() {
+        track_tracker.scrape_all();
+    }
+
+return     Ok(());
+
     let mut trackers: HashMap<Tracker, HashMap<String, Magnet>> = HashMap::new();
     for (id, magnet) in magnets.clone() {
         for magnet_tracker in magnet.clone().get_trackers() {
@@ -82,11 +101,10 @@ async fn main() -> Result<()> {
         println!("Tracker: {}", tracker);
         for (id, magnet) in magnets {
             let mut stuff = magnet.to_string();
-            stuff.truncate(200);
+            stuff.truncate(150);
             println!("  {}", stuff);
         }
     }
-
 
     Ok(())
 }

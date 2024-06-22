@@ -1,13 +1,10 @@
 use anyhow::{bail, Context, Result};
-use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use url::Url;
 
-use super::Magnet;
-
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
-enum TrackerSchema {
+pub enum TrackerSchema {
     UDP,
     HTTP,
     HTTPS,
@@ -17,7 +14,7 @@ enum TrackerSchema {
 pub struct Tracker {
     host: String,
     port: u16,
-    schema: TrackerSchema,
+    pub schema: TrackerSchema,
 }
 impl Tracker {
     pub fn new(link: &str) -> Result<Tracker> {
