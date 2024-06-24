@@ -10,13 +10,13 @@ use elasticsearch_mget::ElasticsearchMgetResponse;
 use magnet::Magnet;
 use tracker::Tracker;
 
-use scraper::Scraper;
+use scraper::TorrustTorrentStat;
 
 mod elasticsearch_mget;
 mod magnet;
+mod scraper;
 mod track_tracker;
 mod tracker;
-mod scraper;
 
 struct Config {
     elasticsearch_host: String,
@@ -53,58 +53,62 @@ async fn main() -> Result<()> {
     "#
     ));
 
-    let heatmap: Vec<Vec<String>> = script.invoke(&mut con)?;
-    let ids: Vec<String> = heatmap
-        .into_iter()
-        .flat_map(|pair| pair.into_iter().take(1))
-        .collect();
-
-    let response = elasticsearch_client
-        .mget(MgetParts::Index("torrent_cache2"))
-        ._source_includes(&["MagnetUri"])
-        .body(json!({"ids" : ids}))
-        .send()
-        .await?;
-
-    let results = response.json::<ElasticsearchMgetResponse>().await?;
-
-    let magnets: Vec<(String, Magnet)> = results
-        .docs
-        .into_iter()
-        .filter_map(|d| d.source.magnet_uri.and_then(|mu| Some((d.id, mu))))
-        .filter_map(|(id, mu)| Magnet::new(mu).ok().map(|magnet| (id, magnet)))
-        .collect();
-
     let mut track_trackers: HashMap<Tracker, TrackTrackers> = HashMap::new();
-    for (id, magnet) in magnets.clone() {
-        for magnet_tracker in magnet.clone().get_trackers() {
-            let entry = track_trackers.entry(magnet_tracker.clone()).or_insert_with(|| TrackTrackers::new(magnet_tracker));
-            entry.insert_magnet((id.clone(), magnet.clone()));
+
+    loop {
+        let heatmap: Vec<Vec<String>> = script.invoke(&mut con)?;
+        let ids: Vec<String> = heatmap
+            .into_iter()
+            .flat_map(|pair| pair.into_iter().take(1))
+            .collect();
+
+        let response = elasticsearch_client
+            .mget(MgetParts::Index("torrent_cache2"))
+            ._source_includes(&["MagnetUri"])
+            .body(json!({"ids" : ids}))
+            .send()
+            .await?;
+
+        let results = response.json::<ElasticsearchMgetResponse>().await?;
+
+        let magnets: Vec<(String, Magnet)> = results
+            .docs
+            .into_iter()
+            .filter_map(|d| d.source.magnet_uri.and_then(|mu| Some((d.id, mu))))
+            .filter_map(|(id, mu)| Magnet::new(mu).ok().map(|magnet| (id, magnet)))
+            .collect();
+
+        for (id, magnet) in magnets.clone() {
+            for magnet_tracker in magnet.clone().get_trackers() {
+                let entry = track_trackers
+                    .entry(magnet_tracker.clone())
+                    .or_insert_with(|| TrackTrackers::new(magnet_tracker));
+                entry.insert_magnet((id.clone(), magnet.clone()));
+            }
         }
-    }
 
-    for track_tracker in track_trackers.values_mut() {
-        track_tracker.scrape_all();
-    }
-
-return     Ok(());
-
-    let mut trackers: HashMap<Tracker, HashMap<String, Magnet>> = HashMap::new();
-    for (id, magnet) in magnets.clone() {
-        for magnet_tracker in magnet.clone().get_trackers() {
-            let entry = trackers.entry(magnet_tracker).or_insert_with(HashMap::new);
-            entry.insert(id.clone(), magnet.clone());
+        let mut magnet_results: HashMap<String, HashMap<String, TorrustTorrentStat>> =
+            HashMap::new();
+        for track_tracker in track_trackers.values_mut() {
+            match track_tracker.scrape_all() {
+                Ok(r) => {
+                    for (id, magnet) in r {
+                        let es_entry = magnet_results.entry(id).or_insert_with(HashMap::new);
+                        es_entry.insert(track_tracker.tracker.to_string(), magnet);
+                    }
+                }
+                Err(e) => eprintln!("{}", e),
+            }
         }
-    }
 
-    for (tracker, magnets) in trackers {
-        println!("Tracker: {}", tracker);
-        for (id, magnet) in magnets {
-            let mut stuff = magnet.to_string();
-            stuff.truncate(150);
-            println!("  {}", stuff);
+        for (id, result) in magnet_results {
+            println!("{}: ", id);
+            for (tracker_name, stats) in result {
+                println!("  {} -> {}", tracker_name, stats);
+            }
         }
-    }
 
-    Ok(())
+        // Clear the inserted magnets
+        track_trackers.values_mut().for_each(|t| t.clear_magnets())
+    }
 }

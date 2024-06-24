@@ -5,6 +5,7 @@ pub struct ElasticsearchMgetResponse {
     pub docs: Vec<Doc>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct Doc {
     #[serde(rename = "_id")]
