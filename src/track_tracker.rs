@@ -9,6 +9,11 @@ use super::scraper::TorrustScraper;
 use super::tracker::Tracker;
 use super::tracker::TrackerSchema;
 
+const TIMEOUT_COMMAND: u32 = 5; // seconds
+const MAX_MULTIPLIER_DEVIATION: f32 = 50.0;
+const TRACKER_DEAD_HOPE_PERCENTAGE: f32 = 0.005; // 0.5% chance to check a dead tracker
+const TRACKER_DOUBT_PERCENTAGE: f32 = 0.5; // If the score is lower than this, we doubt that it is online
+
 #[derive(Debug)]
 pub struct TrackTrackers {
     pub tracker: Tracker,
@@ -21,8 +26,8 @@ impl TrackTrackers {
         TrackTrackers {
             tracker,
             magnets: HashMap::new(),
-            score: 0.50,            // Percentage number between 0 and 1
-            score_multiplier: 0.00, // Exponential multiplier between -50 and 50
+            score: TRACKER_DOUBT_PERCENTAGE, // Percentage number between 0 and 1
+            score_multiplier: 0.00,          // Exponential multiplier between -50 and 50
         }
     }
 
@@ -35,54 +40,48 @@ impl TrackTrackers {
     }
 
     pub fn scrape_all(&mut self) -> Result<Scraper> {
-        // if score is 0, there is a 99.5% chance we will skip checking it
-        let num: f32 = rand::thread_rng().gen_range(0.0..1.0);
-        if 0.5 > self.score && num > self.score + 0.005 {
-            bail!("Tracker {} is likely down, skipping", self.tracker);
-        } else if 0.5 > self.score {
-            println!("Testing tracker, {} > {}", self.score + 0.005, num);
+        // No need to reach out to the tracker if it has no magnets
+        if self.magnets.is_empty() {
+            return Ok(Scraper::new());
         }
 
-        let arguments: Vec<String> = self.magnets.values().map(|m| m.clone().info_hash).collect();
+        // if score is 0, there is a 99.5% chance we will skip checking it
+        let num: f32 = rand::thread_rng().gen_range(0.0..1.0);
+        if TRACKER_DOUBT_PERCENTAGE > self.score && num > self.score + TRACKER_DEAD_HOPE_PERCENTAGE
+        {
+            bail!("Tracker {} is likely down, skipping", self.tracker);
+        } else if TRACKER_DOUBT_PERCENTAGE > self.score {
+            println!(
+                "Testing tracker, {} > {}",
+                self.score + TRACKER_DEAD_HOPE_PERCENTAGE,
+                num
+            );
+        }
+
         let application = match self.tracker.schema {
             TrackerSchema::UDP => "udp_tracker_client",
             TrackerSchema::HTTP | TrackerSchema::HTTPS => "http_tracker_client",
         };
-        let command_result =
-            Command::new(format!("torrust-tracker/target/release/{}", application))
-                .arg("scrape")
-                .arg(self.tracker.to_string())
-                .args(arguments.clone())
-                .output();
+        let mut arguments: Vec<String> = vec!["scrape".to_string(), self.tracker.to_string()];
+        arguments.extend(
+            self.magnets
+                .values()
+                .map(|m| m.clone().info_hash)
+                .collect::<Vec<String>>(),
+        );
 
-        if let Err(e) = command_result {
-            self.change_score(-3.0);
-            bail!(e);
-        }
+        let output_command = run_command(
+            format!("torrust-tracker/target/release/{}", application),
+            arguments,
+        );
 
-        let command_result = command_result.unwrap();
-
-        if !command_result.status.success() {
-            let mut fail_text = format!(
-                "{}: Failed status code {}",
-                self.tracker,
-                command_result
-                    .status
-                    .code()
-                    .and_then(|n| Some(n.to_string()))
-                    .unwrap_or("?".to_string())
-            );
-            if !command_result.stderr.is_empty() {
-                fail_text += &format!(
-                    " because of: {}",
-                    String::from_utf8_lossy(&command_result.stderr).trim()
-                );
+        let output_str = match output_command {
+            Ok(r) => r,
+            Err(e) => {
+                self.change_score(-1.5);
+                bail!(e);
             }
-            self.change_score(-1.5);
-            bail!(fail_text);
-        }
-
-        let output_str = String::from_utf8_lossy(&command_result.stdout);
+        };
 
         if let Some(index) = output_str.find("{") {
             let json_str = &output_str[index..];
@@ -107,7 +106,8 @@ impl TrackTrackers {
             // Switch from minus to positive
             self.score_multiplier = 1.0;
         } else {
-            self.score_multiplier = (self.score_multiplier + 1.0 * weight).clamp(-50.0, 50.0);
+            self.score_multiplier = (self.score_multiplier + 1.0 * weight)
+                .clamp(-MAX_MULTIPLIER_DEVIATION, MAX_MULTIPLIER_DEVIATION);
         }
 
         let new_score = (self.score + self.score_multiplier * 0.05).clamp(0.0, 1.0);
@@ -121,4 +121,26 @@ impl TrackTrackers {
             );
         }
     }
+}
+
+fn run_command(application: String, arguments: Vec<String>) -> Result<String> {
+    let command_result = Command::new(application).args(arguments.clone()).output()?;
+
+    if !command_result.status.success() {
+        let status_code = command_result
+            .status
+            .code()
+            .and_then(|n| Some(n.to_string()))
+            .unwrap_or("?".to_string());
+        let mut fail_text = format!("Failed status code {}", status_code);
+        if !command_result.stderr.is_empty() {
+            fail_text += &format!(
+                " because of: {}",
+                String::from_utf8_lossy(&command_result.stderr).trim()
+            );
+        }
+        bail!(fail_text);
+    }
+
+    Ok(String::from_utf8_lossy(&command_result.stdout).into_owned())
 }

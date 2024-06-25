@@ -76,6 +76,7 @@ async fn main() -> Result<()> {
             .into_iter()
             .filter_map(|d| d.source.magnet_uri.and_then(|mu| Some((d.id, mu))))
             .filter_map(|(id, mu)| Magnet::new(mu).ok().map(|magnet| (id, magnet)))
+            .filter(|(_, magnet)| magnet.info_hash.len() == 40) // Only sha1 supported
             .collect();
 
         for (id, magnet) in magnets.clone() {
