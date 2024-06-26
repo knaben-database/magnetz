@@ -177,7 +177,8 @@ async fn main() -> Result<()> {
         };
 
         if response_json["errors"].as_bool().unwrap_or(false) == true {
-            println!("Bulk had errors!");
+            eprintln!("Bulk had errors!");
+            continue;
         }
 
         let updated_magnets = response_json["items"]
