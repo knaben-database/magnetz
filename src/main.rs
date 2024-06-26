@@ -1,41 +1,47 @@
 use anyhow::Result;
-use elasticsearch::{Elasticsearch, MgetParts};
+use elasticsearch::{
+    http::{request::JsonBody, transport::Transport},
+    BulkParts, Elasticsearch, MgetParts,
+};
+use lazy_static::lazy_static;
 use redis::{self, Script};
-use serde_json::json;
-use std::collections::HashMap;
+use serde_json::{json, Value};
+use std::{collections::HashMap, time::Duration};
 use tokio;
-use track_tracker::TrackTrackers;
 
-use elasticsearch_mget::ElasticsearchMgetResponse;
+use config::Config;
 use magnet::Magnet;
+use scraper::TorrustTorrentStat;
+use track_tracker::TrackTrackers;
 use tracker::Tracker;
 
-use scraper::TorrustTorrentStat;
-
-mod elasticsearch_mget;
+mod config;
+mod es_requests;
 mod magnet;
 mod scraper;
 mod track_tracker;
 mod tracker;
 
-struct Config {
-    elasticsearch_host: String,
-    elasticsearch_port: u16,
-    elasticsearch_index: String,
-    redis_host: String,
-    redis_port: u16,
-    redis_key: String,
+lazy_static! {
+    static ref CONFIG: Config = Config::new();
 }
 
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let redis_client = redis::Client::open("redis://127.0.0.1/")?;
-    let elasticsearch_client = Elasticsearch::default();
+    let redis_client = redis::Client::open(format!(
+        "redis://{}:{}/",
+        CONFIG.redis_host, CONFIG.redis_port
+    ))?;
+    let elasticsearch_transport = Transport::single_node(&format!(
+        "http://{}:{}",
+        CONFIG.elasticsearch_host, CONFIG.elasticsearch_port
+    ))?;
+    let elasticsearch_client = Elasticsearch::new(elasticsearch_transport);
     let mut con = redis_client.get_connection()?;
 
     // Lua script that gets 9 of the top heatmap values, deletes them and inserts a lock value with expiry of 7200 seconds
-    let lock_expiry = 7200; // Lock expiry time in seconds
+    let lock_expiry = CONFIG.lock_timer; // Lock expiry time in seconds
     let top_n = 49; // Number of top IDs to retrieve
     let script = Script::new(&format!(
         r#"
@@ -63,13 +69,15 @@ async fn main() -> Result<()> {
             .collect();
 
         let response = elasticsearch_client
-            .mget(MgetParts::Index("torrent_cache2"))
+            .mget(MgetParts::Index(&CONFIG.elasticsearch_index))
             ._source_includes(&["MagnetUri"])
             .body(json!({"ids" : ids}))
             .send()
             .await?;
 
-        let results = response.json::<ElasticsearchMgetResponse>().await?;
+        let results = response
+            .json::<es_requests::mget::ElasticsearchMgetResponse>()
+            .await?;
 
         let magnets: Vec<(String, Magnet)> = results
             .docs
@@ -102,14 +110,93 @@ async fn main() -> Result<()> {
             }
         }
 
-        for (id, result) in magnet_results {
-            println!("{}: ", id);
-            for (tracker_name, stats) in result {
-                println!("  {} -> {}", tracker_name, stats);
-            }
+        if magnet_results.is_empty() {
+            println!("No magnets updated");
+            continue;
         }
 
         // Clear the inserted magnets
-        track_trackers.values_mut().for_each(|t| t.clear_magnets())
+        track_trackers.values_mut().for_each(|t| t.clear_magnets());
+
+        let new_results: HashMap<String, (TorrustTorrentStat, u16)> = magnet_results
+            .into_iter()
+            .map(|(id, result)| {
+                (
+                    id,
+                    (
+                        TorrustTorrentStat {
+                            leechers: result
+                                .values()
+                                .map(|stats| stats.leechers)
+                                .max()
+                                .unwrap_or(0),
+                            seeders: result
+                                .values()
+                                .map(|stats| stats.seeders)
+                                .max()
+                                .unwrap_or(0),
+                            completed: result
+                                .values()
+                                .map(|stats| stats.completed)
+                                .max()
+                                .unwrap_or(0),
+                        },
+                        result.len() as u16,
+                    ),
+                )
+            })
+            .collect();
+
+        let mut body: Vec<JsonBody<Value>> = vec![];
+
+        for (id, (magnet, tracker_count)) in new_results {
+            println!("[{}] Trackers: {} {}", id, tracker_count, magnet);
+            let bulk = es_requests::bulk::Bulk::new(magnet);
+            body.push(json!({"update": {"_id": id}}).into());
+            body.push(json!(bulk).into());
+        }
+
+        let response = elasticsearch_client
+            .bulk(BulkParts::Index(&CONFIG.elasticsearch_index))
+            .body(body)
+            .request_timeout(Duration::from_secs(25))
+            .send()
+            .await;
+
+        let response = match response {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("{e}");
+                continue;
+            }
+        };
+
+        let Ok(response_json) = response.json::<Value>().await else {
+            eprintln!("Failed to parse JSON");
+            continue;
+        };
+
+        if response_json["errors"].as_bool().unwrap_or(false) == true {
+            println!("Bulk had errors!");
+        }
+
+        let updated_magnets = response_json["items"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| {
+                        item.get("update").and_then(|index| {
+                            index
+                                .get("result")
+                                .and_then(|r| r.as_str())
+                                .filter(|s| s == &"updated")
+                        })
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+
+        println!("Updated {} documents", updated_magnets);
     }
 }

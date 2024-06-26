@@ -49,7 +49,8 @@ impl TrackTrackers {
         let num: f32 = rand::thread_rng().gen_range(0.0..1.0);
         if TRACKER_DOUBT_PERCENTAGE > self.score && num > self.score + TRACKER_DEAD_HOPE_PERCENTAGE
         {
-            bail!("Tracker {} is likely down, skipping", self.tracker);
+            return Ok(Scraper::new()); // bailing spams the logs too much
+                                       //bail!("Tracker {} is likely down, skipping", self.tracker);
         } else if TRACKER_DOUBT_PERCENTAGE > self.score {
             println!(
                 "Testing tracker, {} > {}",

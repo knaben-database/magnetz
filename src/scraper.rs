@@ -4,16 +4,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct TorrustTorrentStat {
-    seeders: u32,
-    completed: u32,
-    leechers: u32,
+    pub seeders: u32,
+    pub completed: u32,
+    pub leechers: u32,
 }
 impl fmt::Display for TorrustTorrentStat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{seeders: {}, completed: {}, leechers: {}}}",
-            self.seeders, self.completed, self.leechers
+            "(s: {}, l: {}, c: {})",
+            self.seeders, self.leechers, self.completed
         )
     }
 }
