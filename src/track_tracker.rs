@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
 use rand::Rng;
 use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 use super::magnet::Magnet;
@@ -8,6 +10,7 @@ use super::scraper::Scraper;
 use super::scraper::TorrustScraper;
 use super::tracker::Tracker;
 use super::tracker::TrackerSchema;
+use super::CONFIG;
 
 const TIMEOUT_COMMAND: u32 = 5; // seconds
 const MAX_MULTIPLIER_DEVIATION: f32 = 50.0;
@@ -71,8 +74,12 @@ impl TrackTrackers {
                 .collect::<Vec<String>>(),
         );
 
+        let application_path = PathBuf::from(format!("{}/{}", CONFIG.torrust_path, application));
+        if !application_path.exists() {
+            panic!("Torrust execution path not found: {}", application_path.display());
+        }
         let output_command = run_command(
-            format!("torrust-tracker/target/release/{}", application),
+            &application_path,
             arguments,
         );
 
@@ -124,7 +131,7 @@ impl TrackTrackers {
     }
 }
 
-fn run_command(application: String, arguments: Vec<String>) -> Result<String> {
+fn run_command(application: &Path, arguments: Vec<String>) -> Result<String> {
     let command_result = Command::new(application).args(arguments.clone()).output()?;
 
     if !command_result.status.success() {

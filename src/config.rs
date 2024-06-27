@@ -8,6 +8,7 @@ fn default_config() -> Config {
         redis_host: "127.0.0.1".to_string(),
         redis_port: 6379,
         redis_key: "heatmap".to_string(),
+        torrust_path: "torrust-tracker/target/release".to_string(),
         lock_timer: 7200,
     }
 }
@@ -19,6 +20,7 @@ pub struct Config {
     pub redis_host: String,
     pub redis_port: u16,
     pub redis_key: String,
+    pub torrust_path: String,
     pub lock_timer: u32,
 }
 impl Config {
@@ -39,6 +41,7 @@ impl Config {
             .parse()
             .unwrap_or(default_config.redis_port);
         let redis_key: String = env::var("REDIS_KEY").unwrap_or(default_config.redis_key);
+        let torrust_path: String = env::var("TORRUST_PATH").unwrap_or(default_config.torrust_path);
         let lock_timer: u32 = env::var("LOCK_TIMER")
             .unwrap_or(default_config.lock_timer.to_string())
             .parse()
@@ -51,6 +54,7 @@ impl Config {
             redis_host,
             redis_port,
             redis_key,
+            torrust_path,
             lock_timer,
         }
     }
