@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::scraper::TorrustTorrentStat;
@@ -21,8 +21,9 @@ pub struct Bulk {
 }
 impl Bulk {
     pub fn new(magnet_details: TorrustTorrentStat) -> Bulk {
-        let now = Utc::now();
-        let checked_magnet = now.format("%Y-%m-%dT%H:%M:%S").to_string();
+        let now_utc = Utc::now();
+        let now_local: DateTime<Local> = now_utc.with_timezone(&Local);
+        let checked_magnet = now_local.format("%Y-%m-%dT%H:%M:%S").to_string();
         let live_seeders = magnet_details.seeders as u64;
         let live_peers = magnet_details.leechers as u64;
         let live_grabs = magnet_details.completed as u64;
