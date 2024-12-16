@@ -18,8 +18,6 @@ pub struct Doc {
     seq_no: u64,
     #[serde(rename = "_source")]
     pub source: Source,
-    #[serde(rename = "_type")]
-    r#type: String,
     #[serde(rename = "_version")]
     version: u64,
     found: bool,
