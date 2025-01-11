@@ -26,7 +26,6 @@ lazy_static! {
     static ref CONFIG: Config = Config::new();
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let redis_client = redis::Client::open(format!(
@@ -110,13 +109,13 @@ async fn main() -> Result<()> {
             }
         }
 
+        // Clear the inserted magnets
+        track_trackers.values_mut().for_each(|t| t.clear_magnets());
+
         if magnet_results.is_empty() {
             println!("No magnets updated");
             continue;
         }
-
-        // Clear the inserted magnets
-        track_trackers.values_mut().for_each(|t| t.clear_magnets());
 
         let new_results: HashMap<String, (TorrustTorrentStat, u16)> = magnet_results
             .into_iter()
