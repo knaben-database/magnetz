@@ -74,14 +74,27 @@ async fn main() -> Result<()> {
             .send()
             .await?;
 
-        let results = response
-            .json::<es_requests::mget::ElasticsearchMgetResponse>()
-            .await?;
+        // We use this for debugging purposes
+        let response_text = response.text().await?;
+        let results = match serde_json::from_str::<es_requests::mget::ElasticsearchMgetResponse>(
+            &response_text,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Failed to map to ElasticsearchMgetResponse because: {e}");
+                eprintln!("The document looks like this:");
+                eprintln!("{}", response_text);
+                continue;
+            }
+        };
 
         let magnets: Vec<(String, Magnet)> = results
             .docs
             .into_iter()
-            .filter_map(|d| d.source.magnet_uri.and_then(|mu| Some((d.id, mu))))
+            .filter_map(|d| {
+                d.source
+                    .and_then(|s| s.magnet_uri.and_then(|mu| Some((d.id, mu))))
+            })
             .filter_map(|(id, mu)| Magnet::new(mu).ok().map(|magnet| (id, magnet)))
             .filter(|(_, magnet)| magnet.info_hash.len() == 40) // Only sha1 supported
             .collect();

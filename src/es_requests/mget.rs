@@ -13,13 +13,13 @@ pub struct Doc {
     #[serde(rename = "_index")]
     index: String,
     #[serde(rename = "_primary_term")]
-    primary_term: u64,
+    primary_term: Option<u64>,
     #[serde(rename = "_seq_no")]
-    seq_no: u64,
+    seq_no: Option<u64>,
     #[serde(rename = "_source")]
-    pub source: Source,
+    pub source: Option<Source>,
     #[serde(rename = "_version")]
-    version: u64,
+    version: Option<u64>,
     found: bool,
 }
 
