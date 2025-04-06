@@ -4,7 +4,7 @@ fn default_config() -> Config {
     Config {
         elasticsearch_host: "127.0.0.1".to_string(),
         elasticsearch_port: 9200,
-        elasticsearch_index: "torrent_cache2".to_string(),
+        elasticsearch_index: "torrent_cache3".to_string(),
         redis_host: "127.0.0.1".to_string(),
         redis_port: 6379,
         redis_key: "heatmap".to_string(),
