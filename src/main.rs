@@ -45,6 +45,9 @@ async fn main() -> Result<()> {
     let script = Script::new(&format!(
         r#"
         local result = redis.call('ZMPOP', 1, 'heatmap', 'MAX', 'COUNT', {top_n})
+        if not result then
+            return {{}}
+        end
         local ids = result[2] or {{}}
 
         for i, id_score_pair in ipairs(ids) do
@@ -66,6 +69,12 @@ async fn main() -> Result<()> {
             .into_iter()
             .flat_map(|pair| pair.into_iter().take(1))
             .collect();
+
+        if ids.is_empty() {
+            println!("Heatmap empty, waiting 30 seconds...");
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            continue;
+        }
 
         let response = elasticsearch_client
             .mget(MgetParts::Index(&CONFIG.elasticsearch_index))
